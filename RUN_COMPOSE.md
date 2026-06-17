@@ -1,114 +1,138 @@
-# RUN_COMPOSE.md – Hướng dẫn chạy Lab 05
+# RUN_COMPOSE.md – Hướng dẫn chạy Lab 05
 
-Tài liệu này hướng dẫn người khác clone repo sạch và chạy lại stack Compose của Lab 05.
+## 1. Chuẩn bị
 
----
+Yêu cầu:
 
-## 1. Clone repo
+- Docker Desktop hoặc Docker Engine có Compose v2
+- Node.js 20.x nếu muốn chạy Newman
+- Git
 
-```bash
-git clone <repo-url>
-cd FIT4110_lab05_docker_compose_readiness
-```
-
----
-
-## 2. Cài dependencies cho Newman/Prism/Spectral (tuỳ chọn)
+## 2. Tạo file môi trường
 
 ```bash
-npm install
-```
-
----
-
-## 3. Build & chạy stack Docker Compose
-
-```bash
-# Copy .env.example sang .env và chỉnh sửa nếu cần
 cp .env.example .env
+```
 
-# Build images (nếu chưa có) và khởi động các container trong nền
+Trên PowerShell:
+
+```powershell
+copy .env.example .env
+```
+
+Không commit `.env` thật lên Git.
+
+## 3. Chạy stack Compose
+
+```bash
 docker compose up -d --build
 ```
 
-Lệnh trên sẽ tạo các container:
+Stack gồm:
 
-- `fit4110-db-lab05` (PostgreSQL)
-- `fit4110-ai-lab05` (AI service mẫu chạy port 9000)
-- `fit4110-api-lab05` (API FastAPI trên port 8000)
+- `fit4110-db-lab05`: PostgreSQL
+- `fit4110-ai-lab05`: Mock AI service
+- `fit4110-api-lab05`: IoT Ingestion API
 
-Theo dõi log:
+## 4. Kiểm tra readiness
 
 ```bash
-docker compose logs -f
+docker compose ps
 ```
 
-Sau vài giây, kiểm tra health của mỗi service:
+API:
 
 ```bash
-# API
 curl http://localhost:8000/health
+```
 
-# AI service
+AI:
+
+```bash
 curl http://localhost:9000/health
-
-# DB readiness
-docker exec -it fit4110-db-lab05 pg_isready -U $POSTGRES_USER
 ```
 
-Bạn cũng có thể truy cập endpoint `/predict` của AI service để xem kết quả mẫu:
+DB:
 
 ```bash
-curl -X POST http://localhost:9000/predict
+docker exec -it fit4110-db-lab05 pg_isready -U lab05 -d iotdb
 ```
 
----
+Kết quả mong muốn: các container đều `healthy`.
 
-## 4. Chạy Newman test trên stack Compose (tuỳ chọn)
+## 5. Test end-to-end bằng curl
+
+Tạo reading:
 
 ```bash
+curl -X POST http://localhost:8000/readings \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":"ESP32-LAB-A01","metric":"temperature","value":31.5,"unit":"celsius","timestamp":"2026-05-13T08:30:00+07:00"}'
+```
+
+Trên PowerShell có thể dùng:
+
+```powershell
+$headers = @{
+  "Authorization" = "Bearer local-dev-token"
+  "Content-Type" = "application/json"
+}
+
+$body = @{
+  device_id = "ESP32-LAB-A01"
+  metric = "temperature"
+  value = 31.5
+  unit = "celsius"
+  timestamp = "2026-05-13T08:30:00+07:00"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8000/readings" -Method POST -Headers $headers -Body $body
+```
+
+Lấy readings mới nhất:
+
+```bash
+curl -H "Authorization: Bearer local-dev-token" "http://localhost:8000/readings/latest?limit=5"
+```
+
+## 6. Chạy Newman
+
+```bash
+npm install
 npm run test:compose
 ```
 
-Report sinh tại:
+Report:
 
 ```text
 reports/newman-lab05-compose.xml
 reports/newman-lab05-compose.html
 ```
 
----
+## 7. Xem log
 
-## 5. Dừng stack
+```bash
+docker compose logs -f
+```
 
-Khi không cần nữa, dừng và xoá các container bằng:
+## 8. Dừng stack
 
 ```bash
 docker compose down
 ```
 
-Nếu muốn xoá volume dữ liệu của DB, thêm tuỳ chọn `-v`:
+Xóa cả volume DB:
 
 ```bash
 docker compose down -v
 ```
 
----
-
-## 6. Lệnh nhanh
-
-Bạn có thể dùng Makefile:
+## 9. Lệnh Makefile
 
 ```bash
 make compose-up
-make compose-down
 make logs
+make test-compose
+make compose-down
 ```
-
----
-
-## 7. Mẹo gỡ lỗi
-
-- Sử dụng `docker compose ps` để xem trạng thái container.
-- Nếu API trả lỗi kết nối DB, hãy kiểm tra biến môi trường `POSTGRES_*` trong `.env` và đảm bảo DB đã sẵn sàng (`pg_isready`).
-- Nếu AI service cần tải mô hình lớn, tăng `start_period` của healthcheck trong `docker-compose.yml`.

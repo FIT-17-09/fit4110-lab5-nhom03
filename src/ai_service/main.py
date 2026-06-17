@@ -1,31 +1,44 @@
 """
-Simple AI service mock for Lab 05.
+Mock AI service for FIT4110 Lab 05.
 
-This service exposes two endpoints:
+Endpoints:
+- GET /health
+- POST /predict
 
-* `GET /health` – returns status, service name and version.
-* `POST /predict` – returns a dummy list of detected objects and confidences.
-
-You can replace this file with your actual inference code (e.g. YOLOv8 model).
+The implementation is intentionally lightweight: it returns a simple risk
+classification based on sensor metric/value so the API can demonstrate an
+end-to-end call to another service inside Docker Compose.
 """
+
+from typing import Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List
 
 SERVICE_NAME = "ai-service"
-SERVICE_VERSION = "0.5.0"
+SERVICE_VERSION = "0.5.0-team-iot"
+
+
+class PredictionRequest(BaseModel):
+    device_id: str
+    metric: str
+    value: float
+    unit: Optional[str] = None
+    timestamp: str
+
+
+class PredictionResponse(BaseModel):
+    status: str
+    risk_level: str
+    confidence: float
+    detail: str
+
 
 app = FastAPI(
-    title="FIT4110 Lab 05 - AI Service",
+    title="FIT4110 Lab 05 - Mock AI Service",
     version=SERVICE_VERSION,
-    description="Mock AI service used in Docker Compose stack.",
+    description="Mock AI service used by IoT API in Docker Compose stack.",
 )
-
-
-class Prediction(BaseModel):
-    objects: List[str]
-    confidence: List[float]
 
 
 @app.get("/health")
@@ -33,12 +46,23 @@ def health() -> dict:
     return {"status": "ok", "service": SERVICE_NAME, "version": SERVICE_VERSION}
 
 
-@app.post("/predict", response_model=Prediction)
-def predict() -> Prediction:
-    # This dummy implementation always returns two objects
-    return Prediction(objects=["person", "bicycle"], confidence=[0.98, 0.85])
+@app.post("/predict", response_model=PredictionResponse)
+def predict(payload: PredictionRequest) -> PredictionResponse:
+    risk = "low"
+    confidence = 0.72
+    detail = "normal sensor reading"
 
+    if payload.metric == "temperature" and payload.value >= 70:
+        risk = "high"
+        confidence = 0.95
+        detail = "temperature exceeds high threshold"
+    elif payload.metric == "smoke" and payload.value > 0:
+        risk = "critical"
+        confidence = 0.98
+        detail = "smoke detected"
+    elif payload.metric == "motion" and payload.value > 0:
+        risk = "medium"
+        confidence = 0.86
+        detail = "motion detected"
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    return PredictionResponse(status="ok", risk_level=risk, confidence=confidence, detail=detail)
