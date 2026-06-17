@@ -1,0 +1,232 @@
+{
+  "info": {
+    "name": "FIT4110 Lab05 IoT Compose",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01_Readiness",
+      "item": [
+        {
+          "name": "API Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('API health returns 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('DB and AI ready', function () { pm.expect(json.db).to.eql('ok'); pm.expect(json.ai_service).to.eql('ok'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "AI Health",
+          "request": {
+            "method": "GET",
+            "url": "{{aiUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('AI health returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('AI status ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02_Functional",
+      "item": [
+        {
+          "name": "Create Reading",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/readings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"device_id\": \"ESP32-LAB-A01\", \"metric\": \"temperature\", \"value\": 31.5, \"unit\": \"celsius\", \"timestamp\": \"2026-05-13T08:30:00+07:00\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Has reading_id and ai_result', function () { pm.expect(json).to.have.property('reading_id'); pm.expect(json).to.have.property('ai_result'); });",
+                  "pm.environment.set('readingId', json.reading_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Latest Readings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/readings/latest?limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has items array', function () { pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Reading By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/readings/{{readingId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Correct reading id', function () { pm.expect(pm.response.json().reading_id).to.eql(pm.environment.get('readingId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03_Auth_Negative_Boundary",
+      "item": [
+        {
+          "name": "Unauthorized Missing Token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/readings/latest"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Missing token returns 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('ProblemDetails shape', function () { const j=pm.response.json(); pm.expect(j).to.have.property('status'); pm.expect(j.status).to.eql(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid Payload Missing Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/readings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"metric\": \"temperature\", \"value\": 20, \"unit\": \"celsius\", \"timestamp\": \"2026-05-13T08:30:00+07:00\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invalid payload returns 422', function () { pm.response.to.have.status(422); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Boundary High Temperature",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/readings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"device_id\": \"ESP32-LAB-A01\", \"metric\": \"temperature\", \"value\": 75, \"unit\": \"celsius\", \"timestamp\": \"2026-05-13T08:35:00+07:00\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Boundary accepted', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Warning header exists', function () { pm.expect(pm.response.headers.has('X-Warning')).to.eql(true); });",
+                  "pm.test('AI risk high', function () { pm.expect(pm.response.json().ai_result.risk_level).to.eql('high'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
